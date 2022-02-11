@@ -29,13 +29,18 @@ class RoomListModel(QAbstractListModel):
     def rowCount(self, parent: QModelIndex) -> int:
         return len(self.rooms)
 
-    def data(self, index: QModelIndex, role: int) -> typing.Any:
-        if role != Qt.DisplayRole:
-            return QVariant()
+    def data(self, index: QModelIndex, role: int) -> typing.Any:        
         if index.row() > len(self.rooms):
             return QVariant()
 
-        return str(self.rooms[self.index_to_key(index.row())])
+        item = self.rooms[self.index_to_key(index.row())]
+        
+        if role == Qt.DisplayRole:
+            return item.name or item.room_id
+        elif role == Qt.EditRole:
+            return item
+        
+        return QVariant()
 
     def get_room_by_name(self, name: str) -> Optional[MatrixRoom]:
         for k, r in self.rooms.items():
@@ -124,6 +129,8 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         self.cmdLogin.clicked.connect(self.show_login_window)
 
         self.cmdEmojis.clicked.connect(self.show_emoji_window)
+        
+        self.listRooms.doubleClicked.connect(self.open_roomedit)
 
         self.load_if_available()
 
@@ -133,32 +140,17 @@ class MainWindow(Ui_MainWindow, QMainWindow):
             self._t.abort_gracefully()
             self._t.wait(1000)
         event.accept()
-
+        
     @pyqtSlot()
-    def load_persona(self) -> None:
-        try:
-            with open('persona.json') as f:
-                persona = json.load(f)
-                self.txtRoomNickname.setPlainText(
-                    persona.get(MainWindow.SETTING_DISPLAYNAME, ''))
-                self.txtRoomAvatarMXC.setPlainText(
-                    persona.get(MainWindow.SETTING_AVATARURL, ''))
-                self.txtTags.setPlainText(
-                    persona.get(MainWindow.SETTING_TAGS, ''))
-        except FileNotFoundError:
-            pass
-        except Exception as ex:
-            QMessageBox.critical(
-                self, "Error", "Could not restore persona: " + str(type(ex)) + ":\n" + str(ex))
-
-    @pyqtSlot()
-    def save_persona(self) -> None:
-        with open('persona.json', 'w') as f:
-            json.dump({
-                MainWindow.SETTING_DISPLAYNAME: self.txtRoomNickname.toPlainText(),
-                MainWindow.SETTING_AVATARURL: self.txtRoomAvatarMXC.toPlainText(),
-                MainWindow.SETTING_TAGS: self.txtTags.toPlainText()
-            }, f)
+    def open_roomedit(self):
+        # Get selected room ID
+        items = self.listRooms.selectedIndexes()
+        rooms = [self.proxy.data(it, Qt.EditRole) for it in items]
+        room: MatrixRoom = rooms[0] # there should only be one
+        print('open emote editor for', room)
+        editor = EmojiEditor(parent=self, matrixapi=matrix, room=room.room_id)
+        editor.exec()
+        
 
     def load_if_available(self) -> None:
         try:

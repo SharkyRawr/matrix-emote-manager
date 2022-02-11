@@ -15,6 +15,7 @@ POST_MEDIA_UPLOAD_API = r'/_matrix/media/r0/upload'
 GET_USER_PROFILE_API = r'/_matrix/client/r0/profile/{userid}'
 PUT_ROOM_TAGS = r'/_matrix/client/r0/user/{userid}/rooms/{roomid}/tags/{tag}'
 GETPUT_ACCOUNT_DATA = r'/_matrix/client/r0/user/{userid}/account_data/{type}'
+GETPUT_ROOM_DATA = r'/_matrix/client/r0/rooms/{roomid}/state/{type}/{key}'
 
 # Media requests
 GET_MEDIA_THUMBNAIL = r'/_matrix/media/r0/thumbnail/{servername}/{mediaid}'
@@ -47,9 +48,11 @@ class MatrixRoom(object):
         self.name = name
 
     def __str__(self) -> str:
-        if self.name:
-            return self.name
-        return self.room_id
+        msg = f"<MatrixRoom: {self.room_id} ({self.name})>"
+        return msg
+    
+    def __repr__(self) -> str:
+        return self.__str__()
 
     def has_name(self) -> bool:
         return self.name != None
@@ -214,9 +217,24 @@ class MatrixAPI(object):
         ), json=data)
         r.raise_for_status()
         return r.json()
+    
+    
+    def get_room_state(self, roomid: str, eventType: str, stateKey: Optional[str] = None) -> dict:
+        r = self.do('get', GETPUT_ROOM_DATA.format(
+            roomid=roomid, type=eventType, key=stateKey or ''
+        ))
+        r.raise_for_status()
+        return r.json()
+    
+    
+    def put_room_state(self, roomid: str, eventType: str, data: Dict, stateKey: Optional[str] = None) -> dict:
+        r = self.do('put', GETPUT_ROOM_DATA.format(
+            roomid=roomid, type=eventType, key=stateKey or '',
+        ), json=data)
+        r.raise_for_status()
+        return r.json()
 
     def media_get_thumbnail(self, mxcurl: str, width: int, height: int) -> Tuple[bytes, str]:
-
         m = MXC_RE.search(mxcurl)
         if m is None:
             raise Exception("MXC url could not be parsed")
@@ -231,3 +249,4 @@ class MatrixAPI(object):
             return (content, r.headers['content-type'])
 
         raise Exception("media download failed or some regexp shit i dunno")
+    

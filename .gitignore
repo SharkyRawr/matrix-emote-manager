@@ -3,6 +3,7 @@
 
 /settings.json
 /emojis
+/.qt_for_python
 *~
 *.autosave
 *.a

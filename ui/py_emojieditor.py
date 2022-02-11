@@ -117,16 +117,26 @@ class EmojiUploaderTask(QDialog):
     append = False
     matrix = None
 
-    def __init__(self, filenames: List[str], append: bool, matrix: MatrixAPI, *args, **kwargs) -> None:
+    def __init__(self, filenames: List[str], append: bool, matrix: MatrixAPI, room: Optional[str] = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.emoji_filenames_to_upload = filenames
         self.shouldWork = True
         self.append = append
         self.matrix = matrix
+        self.room = room
 
-        self.emotes = self.matrix.get_account_data(
-            self.matrix.user_id or '', "im.ponies.user_emotes")
+        if self.room:
+            try:
+                self.emotes = self.matrix.get_room_state(self.room, 'im.ponies.room_emotes')
+            except Exception as ex:
+                print(ex)
+                self.emotes = dict()
+                
+        else:
+            self.emotes = self.matrix.get_account_data(
+                self.matrix.user_id or '', "im.ponies.user_emotes"
+            )
         
         if not 'images' in self.emotes:
             self.emotes['images'] = dict()
@@ -179,19 +189,28 @@ class EmojiUploaderTask(QDialog):
     @pyqtSlot()
     def work_done(self):
         self.timer.stop()
-        self.matrix.put_account_data(
-            self.matrix.user_id or '', 'im.ponies.user_emotes', self.emotes)
+        if self.room:
+            self.matrix.put_room_state(
+                self.room, 'im.ponies.room_emotes', self.emotes
+            )
+        else:
+            self.matrix.put_account_data(
+                self.matrix.user_id or '', 'im.ponies.user_emotes', self.emotes
+            )
         self.accept()
 
 
 class EmojiEditor(Ui_EmojiEditor, QDialog):
     updateRowMutex = QMutex()
 
-    def __init__(self, matrixapi: MatrixAPI, *args, **kwargs) -> None:
+    def __init__(self, matrixapi: MatrixAPI, room: Optional[str] = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setupUi(self)
         self.setWindowIcon(QIcon(":/icon.png"))
         self.updateRowMutex = QMutex()
+        
+        if room:
+            self.room = room
 
         def select_files() -> List[str]:
             fd = QFileDialog(self, "Choose emojis",
@@ -206,7 +225,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             files = select_files()
             if len(files) <= 0: return
             dlg = EmojiUploaderTask(
-                files, append=False, matrix=self.matrix, parent=self)
+                files, append=False, matrix=self.matrix, room=self.room, parent=self)
             if dlg.exec_():
                 self.populateForm()
 
@@ -215,7 +234,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             files = select_files()
             if len(files) <= 0: return
             dlg = EmojiUploaderTask(
-                files, append=True, matrix=self.matrix, parent=self)
+                files, append=True, matrix=self.matrix,  room=self.room, parent=self)
             if dlg.exec_():
                 self.populateForm()
 
@@ -258,8 +277,17 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
 
     def populateForm(self):
         g = self.gridLayout
-        emotes = self.matrix.get_account_data(
-            self.matrix.user_id or '', "im.ponies.user_emotes")
+        if self.room:
+            try:
+                emotes = self.matrix.get_room_state(self.room, 'im.ponies.room_emotes')
+            except Exception as ex:
+                print(ex)
+                emotes = dict()
+                
+        else:
+            emotes = self.matrix.get_account_data(
+                self.matrix.user_id or '', "im.ponies.user_emotes"
+            )
 
         emoticons: Dict = dict()
         if 'images' in emotes:
