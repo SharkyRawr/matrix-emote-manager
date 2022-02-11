@@ -89,6 +89,7 @@ class RoomListNameWorker(QThread):
             if self.KeepWorking == False:
                 break
 
+            # todo: fix cross-thread modification of Model
             if not self.model.update_room_name(r):
                 print(r)
                 try:
