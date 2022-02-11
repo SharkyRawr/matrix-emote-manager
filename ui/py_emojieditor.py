@@ -127,6 +127,9 @@ class EmojiUploaderTask(QDialog):
 
         self.emotes = self.matrix.get_account_data(
             self.matrix.user_id or '', "im.ponies.user_emotes")
+        
+        if not 'images' in self.emotes:
+            self.emotes['images'] = dict()
 
         self.setupUI()
 
@@ -258,7 +261,9 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         emotes = self.matrix.get_account_data(
             self.matrix.user_id or '', "im.ponies.user_emotes")
 
-        emoticons: Dict = emotes['images'] or dict()
+        emoticons: Dict = dict()
+        if 'images' in emotes:
+            emoticons = emotes['images']
         emoRow = {}
         row = 0
         for k, v in emoticons.items():
