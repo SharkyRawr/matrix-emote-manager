@@ -202,6 +202,7 @@ class EmojiUploaderTask(QDialog):
 
 class EmojiEditor(Ui_EmojiEditor, QDialog):
     updateRowMutex = QMutex()
+    room: str = None
 
     def __init__(self, matrixapi: MatrixAPI, room: Optional[str] = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
