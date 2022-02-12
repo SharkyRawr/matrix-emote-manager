@@ -56,7 +56,7 @@
         <x>0</x>
         <y>0</y>
         <width>400</width>
-        <height>274</height>
+        <height>273</height>
        </rect>
       </property>
       <property name="autoFillBackground">
@@ -79,7 +79,7 @@
         <number>0</number>
        </property>
        <item>
-        <layout class="QGridLayout" name="gridLayout"/>
+        <widget class="QTableView" name="tableView"/>
        </item>
       </layout>
      </widget>

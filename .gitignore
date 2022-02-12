@@ -1,6 +1,7 @@
 # This file is used to ignore files which are generated
 # ----------------------------------------------------------------------------
 
+/.vscode
 /settings.json
 /emojis
 /.qt_for_python
