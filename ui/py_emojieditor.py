@@ -209,65 +209,12 @@ class EmojiTableModel(QSqlTableModel):
     
     def __init__(self, parent, db, *args, **kwargs) -> None:
         super().__init__(parent, db, *args, **kwargs)
-        #self.db = QSqlDatabase.addDatabase('QSQLITE')
-        #self.db.setDatabaseName(db_path)
         if not db.open() or db.isOpenError() or not db.isValid():
             raise Exception("Could not open database: " + db.lastError().text())
         self.setTable('emojis')
         if db.lastError().isValid():
             raise Exception(db.lastError().text())
         self.select()
-        
-    # def index_to_key(self, index: int) -> str:
-    #     a = list(self.emoticons)[index]
-    #     return a
-        
-    # def rowCount(self, parent: QModelIndex) -> int:
-    #     return len(self.emoticons)
-    
-    # def columnCount(self, index: QModelIndex):
-    #     return 3
-    
-    # def headerData(self, column, orientation, role=Qt.DisplayRole):
-    #     if role != Qt.DisplayRole:
-    #         return QVariant()
-    #     if orientation == Qt.Horizontal:
-    #         if column == 0:
-    #             return QVariant('Preview')
-    #         elif column == 1:
-    #             return QVariant('Short Code')
-    #         elif column == 2:
-    #             return QVariant('MXC URL')
-
-    # def data(self, index: QModelIndex, role: int) -> Any:        
-    #     if index.row() > len(self.emoticons):
-    #         return QVariant()
-
-    #     item = self.emoticons[self.index_to_key(index.row())]
-    #     #print(item)
-        
-    #     if role == Qt.DisplayRole:
-    #         keys = list(item.keys())
-    #         shortcode = self.index_to_key(index.row())
-    #         if index.column() == 2:
-    #             return str(shortcode)
-    #         elif index.column() == 1:
-    #             return item['url']
-    #         elif index.column() == 0:
-    #             return "Preview goes here :3"
-    #         else: return QVariant()
-    #     elif role == Qt.EditRole and index.column() == 0:
-    #         return index.data(role)
-        
-    #     return QVariant()
-    
-    
-    #def setData(self, index, value, role=Qt.EditRole):
-        #self.emoticons[index.row()]
-        #print("Update", index, value)
-        #emkey = self.index_to_key(index.row())
-        #self.emoticons[emkey] = value
-        #self.dataChanged.emit(index, index)
 
 
 class EmojiTableDelegate(QItemDelegate):
@@ -275,13 +222,12 @@ class EmojiTableDelegate(QItemDelegate):
         super().__init__(parent=parent, *args, **kwargs)
         
     def paint(self, painter, option, index):
-        if index.column() != 2: # todo: update after reorder?
+        if index.column() != 0: # todo: update after reorder?
             return super().paint(painter, option, index)
         
         blob = index.model().data(index, Qt.DisplayRole)
-        print(type(blob))
-        if type(blob) is str:
-            print("emoji blob is null:", index.row())
+        if type(blob) is not QByteArray:
+            print("emoji blob is valid:", index.row(), type(blob))
             return super().paint(painter, option, index)
         
         
@@ -294,8 +240,6 @@ class EmojiTableDelegate(QItemDelegate):
         
         painter.save()
         painter.translate(option.rect.topLeft())
-        #w.render(painter)
-        #drawable.render(painter)
         painter.drawPixmap(0, 0, drawable)
         painter.restore()
         
