@@ -12,7 +12,8 @@ from PyQt5.QtCore import (QCoreApplication, QMutex, QObject, Qt,
 from PyQt5.QtGui import QIcon, QMovie, QPixmap
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
-                             QVBoxLayout, QTableView, QItemDelegate, QLabel)
+                             QVBoxLayout, QTableView, QItemDelegate, QLabel,
+                             QHeaderView)
 from PyQt5.QtSql import QSqlTableModel, QSqlDatabase
 
 from .emojieditor import Ui_EmojiEditor
@@ -253,6 +254,9 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.setupUi(self)
         self.setWindowIcon(QIcon(":/icon.png"))
         self.updateRowMutex = QMutex()
+        vheader = self.tableView.verticalHeader()
+        vheader.setDefaultSectionSize(64)
+        vheader.sectionResizeMode(QHeaderView.Fixed)
         
         if room:
             self.room = room
