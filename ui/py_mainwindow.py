@@ -51,7 +51,7 @@ class RoomListModel(QAbstractListModel):
         room = self.rooms[roomid]
         try:
             if (name := matrix.get_room_name(roomid)) is not None:
-                print(roomid)
+                #print(roomid)
                 self.set_room_name(room, name)
                 return True
         except HTTPError:
@@ -91,7 +91,7 @@ class RoomListNameWorker(QThread):
 
             # todo: fix cross-thread modification of Model
             if not self.model.update_room_name(r):
-                print(r)
+                #print(r)
                 try:
                     members = matrix.get_room_members(r, exclude_myself=True)
                     self.model.set_room_name(
