@@ -13,6 +13,7 @@ from PyQt5.QtGui import QIcon, QMovie, QPixmap
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
                              QVBoxLayout, QTableView, QItemDelegate, QLabel)
+from PyQt5.QtSql import QSqlTableModel, QSqlDatabase
 
 from .emojieditor import Ui_EmojiEditor
 from .ImportExportHandlerAndProgressDialog import \
@@ -22,7 +23,7 @@ EMOJI_DIR = r'emojis'
 
 
 class EmojiDownloadThread(QThread):
-    emojiFinished = pyqtSignal(int, bytes, str, str, name="emojiFinished")
+    emojiFinished = pyqtSignal(int, str, str, bytes, str, name="emojiFinished")
     keepRunning = True
 
     def __init__(self, parent: Optional[QObject], matrix: MatrixAPI, emojilist: Dict) -> None:
@@ -35,13 +36,14 @@ class EmojiDownloadThread(QThread):
         self.keepRunning = False
 
     def run(self):
-        for i, mxc in self.emojilist.items():
+        for shortcode, mxc in self.emojilist.items():
             if self.keepRunning == False:
                 break
 
-            emojiBytes, mimetype, filepath = self.getCachedEmoji(
-                mxc, width=128, height=128)
-            self.emojiFinished.emit(i, emojiBytes, mimetype, filepath)
+            emojiBytes, mimetype, filepath = self.getCachedEmoji(mxc['url'], width=128, height=128)
+            
+            # i, shortcode, mxc, emojiBytes, mimetype
+            self.emojiFinished.emit(list(self.emojilist.keys()).index(shortcode), shortcode, mxc['url'], emojiBytes, mimetype)
 
     def getCachedEmoji(self, mxcurl, width: int, height: int) -> Tuple[bytes, str, str]:
         m = MXC_RE.search(mxcurl)
@@ -58,7 +60,7 @@ class EmojiDownloadThread(QThread):
                 if pm:
                     filename, ext = pm.groups()
                     if mediaid in filename:
-                        print("Cached emoji", mediaid)
+                        #print("Cached emoji", mediaid)
                         mimetype, _ = mimetypes.guess_type(p)
                         mimetype = mimetype or 'application/octet-stream'
                         with open(os.path.join(EMOJI_DIR, p), 'rb') as f:
@@ -201,64 +203,71 @@ class EmojiUploaderTask(QDialog):
         self.accept()
         
 
-class EmojiTableModel(QAbstractTableModel):
+class EmojiTableModel(QSqlTableModel):
     matrix: MatrixAPI
     emoticons: dict
     
-    def __init__(self, emotes, *args, **kwargs) -> None:
-        super().__init__()
-        self.emoticons = emotes
+    def __init__(self, parent, db, *args, **kwargs) -> None:
+        super().__init__(parent, db, *args, **kwargs)
+        #self.db = QSqlDatabase.addDatabase('QSQLITE')
+        #self.db.setDatabaseName(db_path)
+        if not db.open() or db.isOpenError() or not db.isValid():
+            raise Exception("Could not open database: " + db.lastError().text())
+        self.setTable('emojis')
+        if db.lastError().isValid():
+            raise Exception(db.lastError().text())
+        self.select()
         
-    def index_to_key(self, index: int) -> str:
-        a = list(self.emoticons)[index]
-        return a
+    # def index_to_key(self, index: int) -> str:
+    #     a = list(self.emoticons)[index]
+    #     return a
         
-    def rowCount(self, parent: QModelIndex) -> int:
-        return len(self.emoticons)
+    # def rowCount(self, parent: QModelIndex) -> int:
+    #     return len(self.emoticons)
     
-    def columnCount(self, index: QModelIndex):
-        return 3
+    # def columnCount(self, index: QModelIndex):
+    #     return 3
     
-    def headerData(self, column, orientation, role=Qt.DisplayRole):
-        if role != Qt.DisplayRole:
-            return QVariant()
-        if orientation == Qt.Horizontal:
-            if column == 0:
-                return QVariant('Preview')
-            elif column == 1:
-                return QVariant('Short Code')
-            elif column == 2:
-                return QVariant('MXC URL')
+    # def headerData(self, column, orientation, role=Qt.DisplayRole):
+    #     if role != Qt.DisplayRole:
+    #         return QVariant()
+    #     if orientation == Qt.Horizontal:
+    #         if column == 0:
+    #             return QVariant('Preview')
+    #         elif column == 1:
+    #             return QVariant('Short Code')
+    #         elif column == 2:
+    #             return QVariant('MXC URL')
 
-    def data(self, index: QModelIndex, role: int) -> Any:        
-        if index.row() > len(self.emoticons):
-            return QVariant()
+    # def data(self, index: QModelIndex, role: int) -> Any:        
+    #     if index.row() > len(self.emoticons):
+    #         return QVariant()
 
-        item = self.emoticons[self.index_to_key(index.row())]
-        #print(item)
+    #     item = self.emoticons[self.index_to_key(index.row())]
+    #     #print(item)
         
-        if role == Qt.DisplayRole:
-            keys = list(item.keys())
-            shortcode = self.index_to_key(index.row())
-            if index.column() == 2:
-                return str(shortcode)
-            elif index.column() == 1:
-                return item['url']
-            elif index.column() == 0:
-                return "Preview goes here :3"
-            else: return QVariant()
-        elif role == Qt.EditRole and index.column() == 0:
-            return index.data(role)
+    #     if role == Qt.DisplayRole:
+    #         keys = list(item.keys())
+    #         shortcode = self.index_to_key(index.row())
+    #         if index.column() == 2:
+    #             return str(shortcode)
+    #         elif index.column() == 1:
+    #             return item['url']
+    #         elif index.column() == 0:
+    #             return "Preview goes here :3"
+    #         else: return QVariant()
+    #     elif role == Qt.EditRole and index.column() == 0:
+    #         return index.data(role)
         
-        return QVariant()
+    #     return QVariant()
     
     
-    def setData(self, index, value, role=Qt.EditRole):
+    #def setData(self, index, value, role=Qt.EditRole):
         #self.emoticons[index.row()]
         #print("Update", index, value)
-        emkey = self.index_to_key(index.row())
-        self.emoticons[emkey] = value
-        self.dataChanged.emit(index, index)
+        #emkey = self.index_to_key(index.row())
+        #self.emoticons[emkey] = value
+        #self.dataChanged.emit(index, index)
 
 
 class EmojiTableDelegate(QItemDelegate):
@@ -301,10 +310,6 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.setupUi(self)
         self.setWindowIcon(QIcon(":/icon.png"))
         self.updateRowMutex = QMutex()
-        self.emoteDownloadInterval = QTimer(parent=self)
-        self.emoteDownloadInterval.setInterval(100)
-        self.emoteDownloadInterval.stop()
-        self.emoteDownloadInterval.timeout.connect(self.downloadAnotherEmoji)
         
         if room:
             self.room = room
@@ -342,13 +347,74 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             os.mkdir(EMOJI_DIR)
 
         self.matrix = matrixapi
-        self.populateForm()
+        
+        t: QTableView = self.tableView
+        self.db = QSqlDatabase.addDatabase('QSQLITE')
+        self.db.setDatabaseName('emojimanager.db')
+        self.m = EmojiTableModel(parent=self, db=self.db)
+        t.setModel(self.m)
+        #d = EmojiTableDelegate(self)
+        #t.setItemDelegate(d)
+        
+        if self.room:
+            try:
+                emotes = self.matrix.get_room_state(self.room, 'im.ponies.room_emotes')
+            except Exception as ex:
+                print(ex)
+                emotes = dict()
+                
+        else:
+            emotes = self.matrix.get_account_data(
+                self.matrix.user_id or '', "im.ponies.user_emotes"
+            )
+
+        emoticons: Dict = dict()
+        if 'images' in emotes:
+            emoticons = emotes['images']
+        
+        
+        self.downloadThread = EmojiDownloadThread(self, self.matrix, emoticons)
+        self.downloadThread.start()
+        self.downloadThread.emojiFinished.connect(self.emojiDownloadCompleted)
 
     @pyqtSlot()
     def closeEvent(self, event):
-        #self.emoji_dl_thr.abort_gracefully()
-        #self.emoji_dl_thr.wait(1000)
+        self.downloadThread.abort_gracefully()
+        self.downloadThread.wait(1000)
         event.accept()
+        
+    
+    @pyqtSlot(int, str, str, bytes, str)
+    def emojiDownloadCompleted(self, i, shortcode, mxc, emojiBytes, mimetype):
+        r = self.m.record()
+        rownumber = -1
+        result = None
+        # find row if it exists
+        for i in range(0, self.m.rowCount()):
+            r = self.m.record(i)
+            if shortcode in r.value('shortcode'):
+                rownumber = i
+                #print('foundRowNumber', rownumber)
+                break
+        
+        r.setValue('shortcode', shortcode)
+        r.setGenerated('shortcode', True)
+        r.setValue('mxc', mxc)
+        r.setGenerated('mxc', True)
+        r.setValue('blob', emojiBytes)
+        r.setGenerated('blob', True)
+        if rownumber < 0:
+            result = self.m.insertRecord(-1, r)
+            if result is False:
+                print("insertRecord", self.m.lastError().text(), self.m.lastError().databaseText())
+        else:
+            result = self.m.setRecord(rownumber, r)
+            if result is False:
+                print("setRecord", self.m.lastError().text(), self.m.lastError().databaseText())
+        
+        self.m.submitAll()
+        self.m.select()
+        
 
     @pyqtSlot()
     def exportEmojis(self):
@@ -370,96 +436,4 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         d = ImportExportHandlerAndProgressDialog(self.matrix, action=ImportExportAction(
             ImportExportAction.EXPORT, directory=export_dir), parent=self)
         d.exec_()
-
-    def populateForm(self):
-        if self.room:
-            try:
-                emotes = self.matrix.get_room_state(self.room, 'im.ponies.room_emotes')
-            except Exception as ex:
-                print(ex)
-                emotes = dict()
-                
-        else:
-            emotes = self.matrix.get_account_data(
-                self.matrix.user_id or '', "im.ponies.user_emotes"
-            )
-
-        emoticons: Dict = dict()
-        if 'images' in emotes:
-            emoticons = emotes['images']
         
-        self.emoticons = emoticons
-        self.emoteDownloadInterval.start()
-        #print(self.emoticons)        
-        
-        t: QTableView = self.tableView
-        self.m = EmojiTableModel(self.emoticons)
-        d = EmojiTableDelegate(self)
-        t.setModel(self.m)
-        t.setItemDelegate(d)
-    
-    
-    def downloadAnotherEmoji(self):
-        for emotekey in self.emoticons:
-            emoticon = self.emoticons[emotekey]
-            row = list(self.emoticons.keys()).index(emotekey)
-            if 'localpath' in emoticon:
-                # already locally cached
-                
-                if 'pixmap' not in emoticon:
-                    # create the pixmap    
-            
-                    if 'image/gif' in emoticon['mime']:
-                        movie = QMovie(emoticon['localpath'])
-                        # @todo: movie.setScaledSize() to something aspect ratio correct
-                        movie.start()
-                        emoticon['movie'] = movie
-                    else:
-                        pm = QPixmap(emoticon['localpath'])
-                        pm = pm.scaled(128, 128, Qt.KeepAspectRatio)
-                        #preview.setPixmap(pm)
-                        emoticon['pixmap'] = pm
-                    self.emoticons[emotekey] = emoticon
-                    self.m.setData(
-                        self.m.createIndex(row, 0),
-                        emoticon
-                    )
-                continue
-            
-            # download emoticon
-            #print(emoticon)
-            m = MXC_RE.search(emoticon['url'])
-            if m is None:
-                raise Exception("MXC url could not be parsed")
-            if len(m.groups()) == 2:
-                _, mediaid = m.groups()
-                mediapath = Path()
-                mediapath = mediapath.joinpath(EMOJI_DIR, mediaid)
-
-                # check if the file is already cached locally
-                for p in os.listdir(EMOJI_DIR):
-                    pm = re.match(r'(.+)\.(.+)', p)
-                    if pm:
-                        filename, ext = pm.groups()
-                        if mediaid in filename:
-                            print("Cached emoji", mediaid)
-                            mimetype, _ = mimetypes.guess_type(p)
-                            mimetype = mimetype or 'application/octet-stream'
-                            emoticon['mime'] = mimetype
-                            emoticon['localpath'] = os.path.join(EMOJI_DIR, p)
-                            self.emoticons[emotekey] = emoticon
-                            continue
-
-                return
-                print("Downloading emoji", mediaid)
-                emojiBytes, content_type = self.matrix.media_get_thumbnail(
-                    emoticon['url'], width=128, height=128
-                )
-                ext = mimetypes.guess_extension(content_type) or '.bin'
-                mediapath = mediapath.with_suffix(ext)
-
-                with open(str(mediapath), 'wb') as f:
-                    f.write(emojiBytes)
-                emoticon['localpath'] = str(mediapath)
-                self.emoticons[emotekey] = emoticon
-                return

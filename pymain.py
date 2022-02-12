@@ -15,6 +15,10 @@ if __name__ == "__main__":
     if not 'frozen' in dir(sys):
         compileUI()
     from ui.py_mainwindow import MainWindow
+    
+    # init db
+    from lib.db import init_db
+    init_db()
 
     app = QApplication(sys.argv)
     window = MainWindow()
