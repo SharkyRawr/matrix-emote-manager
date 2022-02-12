@@ -8,7 +8,7 @@ from lib.matrix import MXC_RE, MatrixAPI
 from PyQt5 import QtCore
 from PyQt5.QtCore import (QCoreApplication, QMutex, QObject, Qt,
                           QThread, QTimer, pyqtSignal, pyqtSlot, QAbstractTableModel, QModelIndex,
-                          QVariant, QTimer)
+                          QVariant, QTimer, QByteArray)
 from PyQt5.QtGui import QIcon, QMovie, QPixmap
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
@@ -275,20 +275,19 @@ class EmojiTableDelegate(QItemDelegate):
         super().__init__(parent=parent, *args, **kwargs)
         
     def paint(self, painter, option, index):
-        if index.column() != 0:
+        if index.column() != 2: # todo: update after reorder?
             return super().paint(painter, option, index)
         
-        emotes = self.parent().emoticons
+        blob = index.model().data(index, Qt.DisplayRole)
+        print(type(blob))
+        if type(blob) is str:
+            print("emoji blob is null:", index.row())
+            return super().paint(painter, option, index)
         
-        emote = emotes[list(emotes)[index.row()]]
-        #print(emote)
-        pm: QPixmap = None
-        if 'pixmap' in emote:
-            pm = emote['pixmap']
-        elif 'movie' in emote:
-            movie = emote['movie']
-            pm = movie.currentPixmap()
-        else:
+        
+        pm = QPixmap()
+        if not pm.loadFromData(blob):
+            print("Error loading emoji:", index.row())
             return super().paint(painter, option, index)
         
         drawable = pm.scaled(option.rect.width(), option.rect.height(), Qt.KeepAspectRatio)
@@ -353,8 +352,8 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.db.setDatabaseName('emojimanager.db')
         self.m = EmojiTableModel(parent=self, db=self.db)
         t.setModel(self.m)
-        #d = EmojiTableDelegate(self)
-        #t.setItemDelegate(d)
+        d = EmojiTableDelegate(self)
+        t.setItemDelegate(d)
         
         if self.room:
             try:
@@ -401,7 +400,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         r.setGenerated('shortcode', True)
         r.setValue('mxc', mxc)
         r.setGenerated('mxc', True)
-        r.setValue('blob', emojiBytes)
+        r.setValue('blob', QByteArray(emojiBytes))
         r.setGenerated('blob', True)
         if rownumber < 0:
             result = self.m.insertRecord(-1, r)
