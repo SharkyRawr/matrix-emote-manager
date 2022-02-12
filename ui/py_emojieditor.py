@@ -247,10 +247,18 @@ class EmojiTableModel(QAbstractTableModel):
             elif index.column() == 0:
                 return "Preview goes here :3"
             else: return QVariant()
-        #elif role == Qt.EditRole:
-        #    return item
+        elif role == Qt.EditRole and index.column() == 0:
+            return index.data(role)
         
         return QVariant()
+    
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        #self.emoticons[index.row()]
+        #print("Update", index, value)
+        emkey = self.index_to_key(index.row())
+        self.emoticons[emkey] = value
+        self.dataChanged.emit(index, index)
 
 
 class EmojiTableDelegate(QItemDelegate):
@@ -265,18 +273,23 @@ class EmojiTableDelegate(QItemDelegate):
         
         emote = emotes[list(emotes)[index.row()]]
         #print(emote)
-        if 'widget' in emote:
-            w = emote['widget']
-            w.setGeometry(option.rect)
-            w.setFrameRect(option.rect)
-            
-            if w.pixmap():
-                w.setPixmap(w.pixmap().scaled(option.rect.width(), option.rect.height(), Qt.KeepAspectRatio))
-            
-            painter.save()
-            painter.translate(option.rect.topLeft())
-            w.render(painter)
-            painter.restore()
+        pm: QPixmap = None
+        if 'pixmap' in emote:
+            pm = emote['pixmap']
+        elif 'movie' in emote:
+            movie = emote['movie']
+            pm = movie.currentPixmap()
+        else:
+            return super().paint(painter, option, index)
+        
+        drawable = pm.scaled(option.rect.width(), option.rect.height(), Qt.KeepAspectRatio)
+        
+        painter.save()
+        painter.translate(option.rect.topLeft())
+        #w.render(painter)
+        #drawable.render(painter)
+        painter.drawPixmap(0, 0, drawable)
+        painter.restore()
         
 
 class EmojiEditor(Ui_EmojiEditor, QDialog):
@@ -289,7 +302,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.setWindowIcon(QIcon(":/icon.png"))
         self.updateRowMutex = QMutex()
         self.emoteDownloadInterval = QTimer(parent=self)
-        self.emoteDownloadInterval.setInterval(1000)
+        self.emoteDownloadInterval.setInterval(100)
         self.emoteDownloadInterval.stop()
         self.emoteDownloadInterval.timeout.connect(self.downloadAnotherEmoji)
         
@@ -333,8 +346,8 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
 
     @pyqtSlot()
     def closeEvent(self, event):
-        self.emoji_dl_thr.abort_gracefully()
-        self.emoji_dl_thr.wait(1000)
+        #self.emoji_dl_thr.abort_gracefully()
+        #self.emoji_dl_thr.wait(1000)
         event.accept()
 
     @pyqtSlot()
@@ -377,66 +390,40 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         
         self.emoticons = emoticons
         self.emoteDownloadInterval.start()
-        #print(self.emoticons)
-
-        # def updateRowPixmap(row, bytes, mimetype, filepath):
-        #     preview = QLabel(self)
-        #     preview.setMinimumSize(128, 128)
-        #     preview.setMaximumSize(128, 128)
-
-        #     if 'image/gif' in mimetype:
-        #         movie = QMovie(filepath)
-        #         # @todo: movie.setScaledSize() to something aspect ratio correct
-        #         preview.setMovie(movie)
-        #         movie.start()
-        #     else:
-        #         pm = QPixmap()
-        #         pm.loadFromData(bytes)
-        #         pm = pm.scaled(128, 128, Qt.KeepAspectRatio)
-        #         preview.setPixmap(pm)
-
-        #     self.updateRowMutex.lock()
-        #     self.gridLayout.addWidget(preview, row, 2)
-        #     self.updateRowMutex.unlock()
-
-        # self.emoji_dl_thr = EmojiDownloadThread(self, self.matrix, emoRow)
-        # self.emoji_dl_thr.emojiFinished.connect(updateRowPixmap)
-        # self.emoji_dl_thr.start()
-        
+        #print(self.emoticons)        
         
         t: QTableView = self.tableView
         self.m = EmojiTableModel(self.emoticons)
         d = EmojiTableDelegate(self)
         t.setModel(self.m)
         t.setItemDelegate(d)
-        
+    
+    
     def downloadAnotherEmoji(self):
-        for index in self.emoticons:
-            emoticon = self.emoticons[index]
+        for emotekey in self.emoticons:
+            emoticon = self.emoticons[emotekey]
+            row = list(self.emoticons.keys()).index(emotekey)
             if 'localpath' in emoticon:
                 # already locally cached
                 
-                if 'widget' not in emoticon:
-                    # create the widgets    
-                    
-                    preview = QLabel(self)
-                    preview.setMinimumSize(128, 128)
-                    preview.setMaximumSize(128, 128)
+                if 'pixmap' not in emoticon:
+                    # create the pixmap    
             
                     if 'image/gif' in emoticon['mime']:
                         movie = QMovie(emoticon['localpath'])
                         # @todo: movie.setScaledSize() to something aspect ratio correct
-                        preview.setMovie(movie)
                         movie.start()
+                        emoticon['movie'] = movie
                     else:
                         pm = QPixmap(emoticon['localpath'])
                         pm = pm.scaled(128, 128, Qt.KeepAspectRatio)
-                        preview.setPixmap(pm)
-                    emoticon['widget'] = preview
-                    self.emoticons[index] = emoticon
-                    #print(self.emoticons)
-                    self.tableView.setModel(None)
-                    self.tableView.setModel(self.m)
+                        #preview.setPixmap(pm)
+                        emoticon['pixmap'] = pm
+                    self.emoticons[emotekey] = emoticon
+                    self.m.setData(
+                        self.m.createIndex(row, 0),
+                        emoticon
+                    )
                 continue
             
             # download emoticon
@@ -460,9 +447,10 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
                             mimetype = mimetype or 'application/octet-stream'
                             emoticon['mime'] = mimetype
                             emoticon['localpath'] = os.path.join(EMOJI_DIR, p)
-                            self.emoticons[index] = emoticon
+                            self.emoticons[emotekey] = emoticon
                             continue
 
+                return
                 print("Downloading emoji", mediaid)
                 emojiBytes, content_type = self.matrix.media_get_thumbnail(
                     emoticon['url'], width=128, height=128
@@ -473,5 +461,5 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
                 with open(str(mediapath), 'wb') as f:
                     f.write(emojiBytes)
                 emoticon['localpath'] = str(mediapath)
-                self.emoticons[index] = emoticon
+                self.emoticons[emotekey] = emoticon
                 return
