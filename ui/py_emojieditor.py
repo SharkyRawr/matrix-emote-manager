@@ -9,12 +9,13 @@ from lib.matrix import MXC_RE, MatrixAPI
 from PyQt5 import QtCore
 from PyQt5.QtCore import (QCoreApplication, QMutex, QObject, Qt,
                           QThread, QTimer, pyqtSignal, pyqtSlot, QModelIndex,
-                          QVariant, QTimer, QByteArray, QSortFilterProxyModel)
+                          QVariant, QTimer, QByteArray, QSortFilterProxyModel,
+                          QPoint)
 from PyQt5.QtGui import QIcon, QMovie, QPixmap, QImage
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
                              QVBoxLayout, QTableView, QItemDelegate, QLabel,
-                             QHeaderView)
+                             QHeaderView, QMenu, QAction)
 from PyQt5.QtSql import QSqlRelationalTableModel, QSqlDatabase, QSqlRelation
 
 from .emojieditor import Ui_EmojiEditor
@@ -301,6 +302,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.matrix = matrixapi
         
         t: QTableView = self.tableView
+        self.tableView.customContextMenuRequested.connect(self.emojiContextMenuRequested)
         self.db = db
         self.m = EmojiTableModel(parent=self, db=self.db)
         if room:
@@ -309,6 +311,11 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         t.setModel(self.m)
         d = EmojiTableDelegate(self)
         t.setItemDelegate(d)
+        
+        self.emojiContextMenu = QMenu(self)
+        delAction = QAction('Delete', self)
+        delAction.triggered.connect(self.emojiDelete)
+        self.emojiContextMenu.addAction(delAction)
         
         self.refreshEmojis()
         
@@ -336,6 +343,18 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.downloadThread.emojiFinished.connect(self.emojiDownloadCompleted)
         self.downloadThread.emojiError.connect(self.emojiError)
         
+    
+    @pyqtSlot(QPoint)
+    def emojiContextMenuRequested(self, point: QPoint):
+        self.emojiContextMenu.popup(self.tableView.viewport().mapToGlobal(point))
+        
+    
+    @pyqtSlot()
+    def emojiDelete(self):
+        selectedIndexes = self.tableView.selectedIndexes()
+        self.m.removeRow(selectedIndexes[0].row())
+        self.m.select()
+
 
     @pyqtSlot()
     def closeEvent(self, event):
