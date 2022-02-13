@@ -84,7 +84,7 @@
          <item>
           <widget class="QPushButton" name="cmdEmojis">
            <property name="text">
-            <string>Emojis</string>
+            <string>Personal Emojis</string>
            </property>
           </widget>
          </item>
@@ -201,7 +201,7 @@
      <x>0</x>
      <y>0</y>
      <width>839</width>
-     <height>24</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
