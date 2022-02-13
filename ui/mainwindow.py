@@ -95,6 +95,7 @@ class Ui_MainWindow(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.listRooms.sizePolicy().hasHeightForWidth())
         self.listRooms.setSizePolicy(sizePolicy)
+        self.listRooms.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.listRooms.setAlternatingRowColors(True)
         self.listRooms.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.listRooms.setObjectName("listRooms")

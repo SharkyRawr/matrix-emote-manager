@@ -7,14 +7,14 @@ from typing import Dict, List, Optional, Tuple, Any
 from lib.matrix import MXC_RE, MatrixAPI
 from PyQt5 import QtCore
 from PyQt5.QtCore import (QCoreApplication, QMutex, QObject, Qt,
-                          QThread, QTimer, pyqtSignal, pyqtSlot, QAbstractTableModel, QModelIndex,
-                          QVariant, QTimer, QByteArray)
+                          QThread, QTimer, pyqtSignal, pyqtSlot, QModelIndex,
+                          QVariant, QTimer, QByteArray, QSortFilterProxyModel)
 from PyQt5.QtGui import QIcon, QMovie, QPixmap
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
                              QVBoxLayout, QTableView, QItemDelegate, QLabel,
                              QHeaderView)
-from PyQt5.QtSql import QSqlTableModel, QSqlDatabase
+from PyQt5.QtSql import QSqlRelationalTableModel, QSqlDatabase, QSqlRelation
 
 from .emojieditor import Ui_EmojiEditor
 from .ImportExportHandlerAndProgressDialog import \
@@ -204,10 +204,7 @@ class EmojiUploaderTask(QDialog):
         self.accept()
         
 
-class EmojiTableModel(QSqlTableModel):
-    matrix: MatrixAPI
-    emoticons: dict
-    
+class EmojiTableModel(QSqlRelationalTableModel):
     def __init__(self, parent, db, *args, **kwargs) -> None:
         super().__init__(parent, db, *args, **kwargs)
         if not db.open() or db.isOpenError() or not db.isValid():
@@ -215,7 +212,11 @@ class EmojiTableModel(QSqlTableModel):
         self.setTable('emojis')
         if db.lastError().isValid():
             raise Exception(db.lastError().text())
+        
+        self.setJoinMode(QSqlRelationalTableModel.LeftJoin)
+        self.setRelation(1, QSqlRelation("rooms", "room", "name"))
         self.select()
+        
 
 
 class EmojiTableDelegate(QItemDelegate):
@@ -249,7 +250,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
     updateRowMutex = QMutex()
     room: str = None
 
-    def __init__(self, matrixapi: MatrixAPI, room: Optional[str] = None, *args, **kwargs) -> None:
+    def __init__(self, matrixapi: MatrixAPI, db, room: Optional[str] = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setupUi(self)
         self.setWindowIcon(QIcon(":/icon.png"))
@@ -296,9 +297,11 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.matrix = matrixapi
         
         t: QTableView = self.tableView
-        self.db = QSqlDatabase.addDatabase('QSQLITE')
-        self.db.setDatabaseName('emojimanager.db')
+        self.db = db
         self.m = EmojiTableModel(parent=self, db=self.db)
+        if room:
+            self.m.setFilter(f"emojis.room = '{room}'")
+            self.m.select()
         t.setModel(self.m)
         d = EmojiTableDelegate(self)
         t.setItemDelegate(d)
@@ -334,18 +337,26 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
     @pyqtSlot(int, str, str, bytes, str)
     def emojiDownloadCompleted(self, i, shortcode, mxc, emojiBytes, mimetype):
         r = self.m.record()
+        
         rownumber = -1
         result = None
-        # find row if it exists
+        # find emoji if it exists
+        rowcount = self.m.rowCount()
+        if rowcount < 0:
+            raise Exception('Rowcount error ' + rowcount)
         for i in range(0, self.m.rowCount()):
             r = self.m.record(i)
             if shortcode in r.value('shortcode'):
                 rownumber = i
                 #print('foundRowNumber', rownumber)
                 break
+            
+        # find room if it exists
         
         r.setValue('shortcode', shortcode)
         r.setGenerated('shortcode', True)
+        r.setValue(1, self.room)
+        r.setGenerated(1, True)
         r.setValue('mxc', mxc)
         r.setGenerated('mxc', True)
         r.setValue('blob', QByteArray(emojiBytes))

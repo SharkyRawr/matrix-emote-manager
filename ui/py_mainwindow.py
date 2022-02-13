@@ -5,9 +5,10 @@ from typing import Dict, List, Optional, Union
 from lib import MatrixAPI, MatrixRoom
 from PyQt5.QtCore import (QAbstractListModel, QDir, QModelIndex, QObject,
                           QSortFilterProxyModel, Qt, QThread, QTimer, QVariant,
-                          pyqtSlot)
+                          pyqtSlot, pyqtSignal)
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMainWindow, QMessageBox
+from PyQt5.QtSql import QSqlTableModel, QSqlDatabase
 from requests.models import HTTPError
 
 from .mainwindow import Ui_MainWindow
@@ -17,90 +18,70 @@ from .py_login_dialog import LoginForm
 matrix = MatrixAPI()
 
 
-class RoomListModel(QAbstractListModel):
-    def __init__(self, parent: typing.Optional['QObject'], rooms: List[str]) -> None:
-        super().__init__(parent)
-        self.rooms: Dict[str, MatrixRoom] = {r: MatrixRoom(r) for r in rooms}
-
-    def index_to_key(self, index: int) -> str:
-        a = list(self.rooms)[index]
-        return a
-
-    def rowCount(self, parent: QModelIndex) -> int:
-        return len(self.rooms)
-
-    def data(self, index: QModelIndex, role: int) -> typing.Any:        
-        if index.row() > len(self.rooms):
-            return QVariant()
-
-        item = self.rooms[self.index_to_key(index.row())]
         
+class RoomTableModel(QSqlTableModel):
+    
+    def __init__(self, parent, db, rooms, *args, **kwargs) -> None:
+        super().__init__(parent, db, *args, **kwargs)
+        if not db.open() or db.isOpenError() or not db.isValid():
+            raise Exception("Could not open database: " + db.lastError().text())
+        self.setTable('rooms')
+        if db.lastError().isValid():
+            raise Exception(db.lastError().text())
+        self.select()
+        
+        for room in rooms:
+            try:
+                r = self.record()
+                r.setValue('room', room)
+                r.setGenerated('room', True)
+                self.insertRecord(-1, r)
+            except Exception as ex:
+                print(ex)
+                
+    
+    def data(self, index: QModelIndex, role):
         if role == Qt.DisplayRole:
-            return item.name or item.room_id
+            roomid = super().data(self.index(index.row(), 0), role)
+            name = super().data(self.index(index.row(), 1), role)    
+            return name or roomid
         elif role == Qt.EditRole:
-            return item
-        
-        return QVariant()
-
-    def get_room_by_name(self, name: str) -> Optional[MatrixRoom]:
-        for k, r in self.rooms.items():
-            if r.name == name:
-                return r
-
-    def update_room_name(self, roomid: str) -> bool:
-        room = self.rooms[roomid]
-        try:
-            if (name := matrix.get_room_name(roomid)) is not None:
-                #print(roomid)
-                self.set_room_name(room, name)
-                return True
-        except HTTPError:
-            pass
-
-        return False
-
-    def set_room_name(self, room: Union[MatrixRoom, str], name: str) -> None:
-        roomid = room.room_id if type(room) is MatrixRoom else room
-        room = self.rooms[roomid]
-        room.set_name(name)
-        self.rooms[roomid] = room
-
-        row = list(self.rooms.keys()).index(roomid)
-
-        self.dataChanged.emit(
-            self.createIndex(row, 0),
-            self.createIndex(row, 0)
-        )
-
+            return super().data(self.index(index.row(), 0), role)
 
 class RoomListNameWorker(QThread):
     KeepWorking = True
+    roomNameFetched = pyqtSignal(str, str, name="roomNameFetched")
 
-    def __init__(self, parent: typing.Optional['QObject'], roomlistmodel: RoomListModel) -> None:
+    def __init__(self, parent: typing.Optional['QObject'], rooms: list) -> None:
         super().__init__(parent)
-        self.model = roomlistmodel
         self.KeepWorking = True
+        self.rooms = rooms
+        
 
     def abort_gracefully(self):
         self.KeepWorking = False
 
     def run(self):
-        for r in self.model.rooms:
+        for r in self.rooms:
             if self.KeepWorking == False:
                 break
-
-            # todo: fix cross-thread modification of Model
-            if not self.model.update_room_name(r):
-                #print(r)
+            
+            try:
+                if (name := matrix.get_room_name(r)) is not None:
+                    #print(roomid)
+                    self.roomNameFetched.emit(r, name)
+                    continue # wait for next cycle
+            except HTTPError:
+                # if the room doesn't have a name, try to fetch the members and give it their name
                 try:
                     members = matrix.get_room_members(r, exclude_myself=True)
-                    self.model.set_room_name(
-                        r, "{} with {}".format(r, ', '.join([str(m.name) for m in members])))
-                except KeyError:
-                    pass
+                    self.roomNameFetched.emit(r,
+                        "{} with {}".format(r, ', '.join([str(m.name) for m in members]))
+                    )
+                except KeyError as kerr:
+                    print(kerr)
                 except HTTPError as herr:
                     print(herr)
-                    pass
 
             self.msleep(100)
         print("RoomListNameWorker is done!")
@@ -117,6 +98,9 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         from res import res
         self.setupUi(self)
         self.setWindowIcon(QIcon(":/icon.png"))
+        
+        self.db = QSqlDatabase.addDatabase('QSQLITE')
+        self.db.setDatabaseName('emojimanager.db')
 
         self.proxy = QSortFilterProxyModel(self)
 
@@ -124,13 +108,10 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         def set_filter_text():
             self.proxy.setFilterRegExp(self.txtFilter.toPlainText())
 
-        self.txtFilter.textChanged.connect(set_filter_text)
-
         self.txtUserID.setText("<Please Login>")
+        self.txtFilter.textChanged.connect(set_filter_text)
         self.cmdLogin.clicked.connect(self.show_login_window)
-
         self.cmdEmojis.clicked.connect(self.show_emoji_window)
-        
         self.listRooms.doubleClicked.connect(self.open_roomedit)
 
         self.load_if_available()
@@ -146,10 +127,12 @@ class MainWindow(Ui_MainWindow, QMainWindow):
     def open_roomedit(self):
         # Get selected room ID
         items = self.listRooms.selectedIndexes()
-        rooms = [self.proxy.data(it, Qt.EditRole) for it in items]
-        room: MatrixRoom = rooms[0] # there should only be one
+        it = items[0]
+        row = it.row()
+        #a = self.model.index(it.row(), 2)
+        room = self.proxy.data(it, Qt.EditRole)
         print('open emote editor for', room)
-        editor = EmojiEditor(parent=self, matrixapi=matrix, room=room.room_id)
+        editor = EmojiEditor(parent=self, matrixapi=matrix, db=QSqlDatabase.cloneDatabase(self.db, 'emojis'), room=room)
         editor.exec()
         
 
@@ -175,20 +158,21 @@ class MainWindow(Ui_MainWindow, QMainWindow):
             self.txtGlobalName.setText(m.name)
 
             # Populate room list
-            if (r := matrix.get_rooms()) is not None:
-                self.model = RoomListModel(self, r)
+            if (rooms := matrix.get_rooms()) is not None:
+                self.model = RoomTableModel(parent=self, db=QSqlDatabase.cloneDatabase(self.db, 'rooms'), rooms=rooms)
 
                 self.proxy.setSourceModel(self.model)
                 self.listRooms.setModel(self.proxy)
 
                 # Start fetching room names
-                self._t = RoomListNameWorker(self, self.model)
-                self._t.start()
+                self._t = RoomListNameWorker(self, rooms=rooms)
+                self._t.roomNameFetched.connect(self.roomNameFetched)
+                #self._t.start()
                 self.statusbar.showMessage("Fetching room/member names ...")
 
                 def finished():
                     self.statusbar.showMessage("Status: {}, last active: {} seconds ago, {} rooms".format(
-                        p['presence'], p['last_active_ago'], len(r)
+                        p['presence'], p['last_active_ago'], len(rooms)
                     ))
 
                 self._t.finished.connect(finished)
@@ -196,6 +180,40 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         else:
             QMessageBox.critical(self, "Login failed",
                                  "Matrix login has failed, please login again...")
+
+    @pyqtSlot(str, str)
+    def roomNameFetched(self, roomid, name):
+        print('roomNameFetched', roomid, name)
+        self.updateRoomName(roomid, name)
+        
+    def updateRoomName(self, roomid, name):
+        r = self.model.record()
+        
+        # get room
+        roomrow = -1
+        for i in range(0, self.model.rowCount()):
+            r = self.model.record(i)
+            if roomid == r.value('room'):
+                roomrow = i
+                #print('foundRowNumber', rownumber)
+                break
+        
+        r.setValue('room', roomid)
+        r.setGenerated('room', True)
+        r.setValue('name', name)
+        r.setGenerated('name', True)
+
+        if roomrow < 0:
+            result = self.model.insertRecord(-1, r)
+            if result is False:
+                print("insertRecord", self.model.lastError().text(), self.model.lastError().databaseText())
+        else:
+            result = self.model.setRecord(roomrow, r)
+            if result is False:
+                print("setRecord", self.model.lastError().text(), self.model.lastError().databaseText())
+        
+        self.model.submitAll()
+        self.model.select()
 
     @pyqtSlot()
     def show_login_window(self) -> None:
@@ -214,49 +232,8 @@ class MainWindow(Ui_MainWindow, QMainWindow):
                 QMessageBox.critical(self, "Login failed",
                                      "Matrix login has failed:\n" + str(ex))
 
-    @pyqtSlot()
-    def upload_avatar_dialog(self) -> None:
-        dlg = QFileDialog(self, "Upload avatar")
-        dlg.setFileMode(QFileDialog.ExistingFile)
-        dlg.setNameFilter("Images (*.png *.jpg *.jpeg *.webp *.gif)")
-
-        if dlg.exec_():
-            filename = dlg.selectedFiles().pop()
-            mxc = matrix.upload_media(filename)
-            self.txtRoomAvatarMXC.setPlainText(mxc)
-
-            pixmap = QPixmap(filename)
-            self.picAvatar.setPixmap(pixmap)
-
-    @pyqtSlot()
-    def apply_room_stuff(self) -> None:
-        items = self.listRooms.selectedIndexes()
-        rooms = [self.proxy.data(it, Qt.DisplayRole) for it in items]
-
-        roomnick = self.txtRoomNickname.toPlainText()
-        roomavatar = self.txtRoomAvatarMXC.toPlainText()
-
-        try:
-            for room in rooms:
-                if (room := self.model.get_room_by_name(room)) is not None:
-                    self.statusbar.showMessage(
-                        "Sending event to room {} ...".format(room))
-                    if len(self.txtRoomNickname.toPlainText()) > 1 or len(self.txtRoomAvatarMXC .toPlainText()) > 1:
-                        matrix.update_roomstate(
-                            room=room, displayname=roomnick, avatarmxc=roomavatar)
-
-                    tags = self.txtTags.toPlainText().split(',')
-                    if len(tags) > 0:
-                        for t in tags:
-                            matrix.put_room_tag(
-                                room=room, tag=t.strip()
-                            )
-                else:
-                    print("Cannot send events to:", room)
-        except Exception as ex:
-            QMessageBox.critical(self, "Login failed", str(ex))
 
     @pyqtSlot()
     def show_emoji_window(self) -> None:
-        dlg = EmojiEditor(parent=self, matrixapi=matrix)
+        dlg = EmojiEditor(parent=self, matrixapi=matrix, db=QSqlDatabase.cloneDatabase(self.db, 'emojis'))
         dlg.exec()
