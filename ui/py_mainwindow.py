@@ -167,7 +167,7 @@ class MainWindow(Ui_MainWindow, QMainWindow):
                 # Start fetching room names
                 self._t = RoomListNameWorker(self, rooms=rooms)
                 self._t.roomNameFetched.connect(self.roomNameFetched)
-                #self._t.start()
+                self._t.start()
                 self.statusbar.showMessage("Fetching room/member names ...")
 
                 def finished():
