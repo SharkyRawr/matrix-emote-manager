@@ -15,5 +15,6 @@ def init_db():
       room TEXT PRIMARY KEY NOT NULL,
       name TEXT
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS room_name_idx ON rooms (room, name);
   """)
   c.close()

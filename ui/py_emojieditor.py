@@ -276,7 +276,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             dlg = EmojiUploaderTask(
                 files, append=False, matrix=self.matrix, room=self.room, parent=self)
             if dlg.exec_():
-                self.populateForm()
+                self.refreshEmojis()
 
         # @todo: simplify this and extract a method or something? i dunno im just a dumb fox 🦊
         def importAppend():
@@ -285,7 +285,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             dlg = EmojiUploaderTask(
                 files, append=True, matrix=self.matrix,  room=self.room, parent=self)
             if dlg.exec_():
-                self.populateForm()
+                self.refreshEmojis()
 
         self.actionImport_overwrite.triggered.connect(importOverwrite)
         self.actionImport_append.triggered.connect(importAppend)
@@ -306,6 +306,10 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         d = EmojiTableDelegate(self)
         t.setItemDelegate(d)
         
+        self.refreshEmojis()
+        
+    
+    def refreshEmojis(self):
         if self.room:
             try:
                 emotes = self.matrix.get_room_state(self.room, 'im.ponies.room_emotes')
@@ -326,6 +330,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.downloadThread = EmojiDownloadThread(self, self.matrix, emoticons)
         self.downloadThread.start()
         self.downloadThread.emojiFinished.connect(self.emojiDownloadCompleted)
+        
 
     @pyqtSlot()
     def closeEvent(self, event):
