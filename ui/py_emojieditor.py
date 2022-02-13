@@ -3,13 +3,14 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+from requests.exceptions import HTTPError
 
 from lib.matrix import MXC_RE, MatrixAPI
 from PyQt5 import QtCore
 from PyQt5.QtCore import (QCoreApplication, QMutex, QObject, Qt,
                           QThread, QTimer, pyqtSignal, pyqtSlot, QModelIndex,
                           QVariant, QTimer, QByteArray, QSortFilterProxyModel)
-from PyQt5.QtGui import QIcon, QMovie, QPixmap
+from PyQt5.QtGui import QIcon, QMovie, QPixmap, QImage
 from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
                              QVBoxLayout, QTableView, QItemDelegate, QLabel,
@@ -25,6 +26,7 @@ EMOJI_DIR = r'emojis'
 
 class EmojiDownloadThread(QThread):
     emojiFinished = pyqtSignal(int, str, str, bytes, str, name="emojiFinished")
+    emojiError = pyqtSignal(int, str, str, str, name='emojiError')
     keepRunning = True
 
     def __init__(self, parent: Optional[QObject], matrix: MatrixAPI, emojilist: Dict) -> None:
@@ -40,11 +42,17 @@ class EmojiDownloadThread(QThread):
         for shortcode, mxc in self.emojilist.items():
             if self.keepRunning == False:
                 break
-
-            emojiBytes, mimetype, filepath = self.getCachedEmoji(mxc['url'], width=128, height=128)
             
-            # i, shortcode, mxc, emojiBytes, mimetype
-            self.emojiFinished.emit(list(self.emojilist.keys()).index(shortcode), shortcode, mxc['url'], emojiBytes, mimetype)
+            rowindex = list(self.emojilist.keys()).index(shortcode)
+
+            try:
+                emojiBytes, mimetype, filepath = self.getCachedEmoji(mxc['url'], width=128, height=128)
+                # i, shortcode, mxc, emojiBytes, mimetype
+                self.emojiFinished.emit(rowindex, shortcode, mxc['url'], emojiBytes, mimetype)
+            except HTTPError as herr:
+                print(herr)
+                self.emojiError.emit(rowindex, shortcode, mxc['url'], str(herr))
+
 
     def getCachedEmoji(self, mxcurl, width: int, height: int) -> Tuple[bytes, str, str]:
         m = MXC_RE.search(mxcurl)
@@ -68,8 +76,7 @@ class EmojiDownloadThread(QThread):
                             return f.read(), mimetype, os.path.join(EMOJI_DIR, p),
 
             print("Downloading emoji", mediaid)
-            emojiBytes, content_type = self.matrix.media_get_thumbnail(
-                mxcurl, width=width, height=height)
+            emojiBytes, content_type = self.matrix.media_get_thumbnail(mxcurl, width=width, height=height)
             ext = mimetypes.guess_extension(content_type) or '.bin'
             mediapath = mediapath.with_suffix(ext)
 
@@ -228,15 +235,12 @@ class EmojiTableDelegate(QItemDelegate):
             return super().paint(painter, option, index)
         
         blob = index.model().data(index, Qt.DisplayRole)
-        if type(blob) is not QByteArray:
-            print("emoji blob is valid:", index.row(), type(blob))
-            return super().paint(painter, option, index)
-        
-        
         pm = QPixmap()
-        if not pm.loadFromData(blob):
+        
+        if type(blob) is not QByteArray or not pm.loadFromData(blob):
             print("Error loading emoji:", index.row())
-            return super().paint(painter, option, index)
+            img = QImage(":/SadMac.png")
+            pm = QPixmap.fromImage(img)
         
         drawable = pm.scaled(option.rect.width(), option.rect.height(), Qt.KeepAspectRatio)
         
@@ -330,6 +334,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.downloadThread = EmojiDownloadThread(self, self.matrix, emoticons)
         self.downloadThread.start()
         self.downloadThread.emojiFinished.connect(self.emojiDownloadCompleted)
+        self.downloadThread.emojiError.connect(self.emojiError)
         
 
     @pyqtSlot()
@@ -339,10 +344,18 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         event.accept()
         
     
+    @pyqtSlot(int, str, str, str)
+    def emojiError(self, i, shortcode, mxc, errmsg):
+        self.insertOrUpdateEmoji(i, shortcode, mxc, None, errmsg)
+        
+    
     @pyqtSlot(int, str, str, bytes, str)
     def emojiDownloadCompleted(self, i, shortcode, mxc, emojiBytes, mimetype):
-        r = self.m.record()
+        self.insertOrUpdateEmoji(i, shortcode, mxc, emojiBytes, mimetype)
         
+        
+    def insertOrUpdateEmoji(self, i, shortcode, mxc, emojiBytes, mimetype):
+        r = self.m.record()
         rownumber = -1
         result = None
         # find emoji if it exists
@@ -351,21 +364,24 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             raise Exception('Rowcount error ' + rowcount)
         for i in range(0, self.m.rowCount()):
             r = self.m.record(i)
-            if shortcode in r.value('shortcode'):
+            if shortcode in r.value(2):
                 rownumber = i
                 #print('foundRowNumber', rownumber)
                 break
-            
-        # find room if it exists
         
-        r.setValue('shortcode', shortcode)
-        r.setGenerated('shortcode', True)
+        r.setValue(2, shortcode)
+        r.setGenerated(2, True)
         r.setValue(1, self.room)
         r.setGenerated(1, True)
-        r.setValue('mxc', mxc)
-        r.setGenerated('mxc', True)
-        r.setValue('blob', QByteArray(emojiBytes))
-        r.setGenerated('blob', True)
+        r.setValue(3, mxc)
+        r.setGenerated(3, True)
+        if emojiBytes:
+            r.setValue(0, QByteArray(emojiBytes))
+            r.setGenerated(0, True)
+        else:
+            r.setNull(0)
+            r.setGenerated(0, True)
+        
         if rownumber < 0:
             result = self.m.insertRecord(-1, r)
             if result is False:
