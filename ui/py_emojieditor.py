@@ -295,6 +295,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.actionImport_overwrite.triggered.connect(importOverwrite)
         self.actionImport_append.triggered.connect(importAppend)
         self.actionExport.triggered.connect(self.exportEmojis)
+        self.cmdPushEmojis.clicked.connect(self.pushEmojis)
 
         if not os.path.lexists(EMOJI_DIR) and not os.path.isdir(EMOJI_DIR):
             os.mkdir(EMOJI_DIR)
@@ -342,6 +343,29 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.downloadThread.start()
         self.downloadThread.emojiFinished.connect(self.emojiDownloadCompleted)
         self.downloadThread.emojiError.connect(self.emojiError)
+        
+        
+        """This function saves the emojis to the Matrix homeserver
+        """
+    @pyqtSlot()
+    def pushEmojis(self):
+        emotes = dict()
+        
+        for i in range(0, self.m.rowCount()):
+            r = self.m.record(i)
+            shortcode = r.value(2)
+            mxc = r.value(3)
+            emotes[shortcode] = dict(url=mxc)
+        
+        try:
+            if self.room:
+                # Push im.ponies.room_emotes
+                self.matrix.put_room_state(self.room, 'im.ponies.room_emotes', dict(images=emotes))
+            else:
+                self.matrix.put_account_data(self.matrix.user_id or '' , 'im.ponies.user_emotes', dict(images=emotes))
+        except Exception as ex:
+            print(ex)
+                
         
     
     @pyqtSlot(QPoint)
