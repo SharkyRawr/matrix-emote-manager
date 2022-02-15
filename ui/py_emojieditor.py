@@ -365,7 +365,9 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
                 self.matrix.put_account_data(self.matrix.user_id or '' , 'im.ponies.user_emotes', dict(images=emotes))
         except Exception as ex:
             print(ex)
+            QMessageBox.critical(self, "Error", str(ex))
                 
+        QMessageBox.information(self, "Success", "Emojis succesfully saved to homeserver.")
         
     
     @pyqtSlot(QPoint)
@@ -376,7 +378,8 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
     @pyqtSlot()
     def emojiDelete(self):
         selectedIndexes = self.tableView.selectedIndexes()
-        self.m.removeRow(selectedIndexes[0].row())
+        for index in selectedIndexes:
+            self.m.removeRow(index.row())
         self.m.select()
 
 
