@@ -118,7 +118,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Bulk Matrix per-room displayname and avatar changer"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Matrix Emote Manager"))
         self.groupBox.setTitle(_translate("MainWindow", "Account:"))
         self.cbUser.setPlaceholderText(_translate("MainWindow", "Choose Account"))
         self.groupBox_4.setTitle(_translate("MainWindow", "Tools:"))
