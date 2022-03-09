@@ -93,27 +93,6 @@ class MatrixAPI(object):
                 json=json, headers=hdr, **kwargs)
         return r
 
-    def save(self, statefile='settings.json') -> None:
-        with open(statefile, 'w') as f:
-            json.dump(dict(
-                access_token=self.access_token,
-                homeserver=self.homeserver,
-                user_id=self.user_id
-            ), f)
-
-    def load(self, statefile='settings.json') -> bool:
-        try:
-            with open(statefile) as f:
-                data: dict = json.load(f)
-                for k in set(['access_token', 'homeserver', 'user_id']):
-                    if k in data:
-                        setattr(self, k, data[k])
-            return True
-
-        except FileNotFoundError:
-            return False
-        except Exception as ex:
-            raise
 
     def get_presence(self, userid: str = None) -> Any:
         uid = userid or self.user_id

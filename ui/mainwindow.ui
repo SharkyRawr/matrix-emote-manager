@@ -26,51 +26,22 @@
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout">
            <item>
-            <widget class="QLabel" name="label">
-             <property name="text">
-              <string>User ID:</string>
+            <widget class="QComboBox" name="cbUser">
+             <property name="minimumSize">
+              <size>
+               <width>128</width>
+               <height>0</height>
+              </size>
              </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="txtUserID">
-             <property name="text">
-              <string>txtUserID</string>
+             <property name="placeholderText">
+              <string>Choose Account</string>
              </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QHBoxLayout" name="horizontalLayout_5">
-           <property name="spacing">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>6</number>
-           </property>
-           <item>
-            <widget class="QLabel" name="label_5">
-             <property name="text">
-              <string>Name:</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="txtGlobalName">
-             <property name="text">
-              <string/>
+             <property name="frame">
+              <bool>true</bool>
              </property>
             </widget>
            </item>
           </layout>
-         </item>
-         <item>
-          <widget class="QPushButton" name="cmdLogin">
-           <property name="text">
-            <string>Login as ...</string>
-           </property>
-          </widget>
          </item>
         </layout>
        </widget>
@@ -211,12 +182,24 @@
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
+   <widget class="QMenu" name="menuAccounts">
+    <property name="title">
+     <string>Accounts</string>
+    </property>
+    <addaction name="actionAdd_new_account"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuAccounts"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionExit">
    <property name="text">
     <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionAdd_new_account">
+   <property name="text">
+    <string>Add new account</string>
    </property>
   </action>
  </widget>

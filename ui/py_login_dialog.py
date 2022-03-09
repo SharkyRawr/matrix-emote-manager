@@ -3,6 +3,10 @@ from .login_dialog import Ui_LoginForm
 from lib import MatrixAPI
 
 class LoginForm(Ui_LoginForm, QDialog):
+    access_token: str
+    homeserver: str
+    user_id: str
+    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setupUi(self)

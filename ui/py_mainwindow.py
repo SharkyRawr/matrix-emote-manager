@@ -8,7 +8,7 @@ from PyQt5.QtCore import (QAbstractListModel, QDir, QModelIndex, QObject,
                           pyqtSlot, pyqtSignal)
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import QFileDialog, QMainWindow, QMessageBox
-from PyQt5.QtSql import QSqlTableModel, QSqlDatabase
+from PyQt5.QtSql import QSqlTableModel, QSqlDatabase, QSqlRecord
 from requests.models import HTTPError
 
 from .mainwindow import Ui_MainWindow
@@ -43,10 +43,68 @@ class RoomTableModel(QSqlTableModel):
     def data(self, index: QModelIndex, role):
         if role == Qt.DisplayRole:
             roomid = super().data(self.index(index.row(), 0), role)
-            name = super().data(self.index(index.row(), 1), role)    
+            name = super().data(self.index(index.row(), 2), role)    
             return name or roomid
         elif role == Qt.EditRole:
             return super().data(self.index(index.row(), 0), role)
+        
+        
+class UserModel(QSqlTableModel):
+    def __init__(self, db: QSqlDatabase, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if not db.open() or db.isOpenError() or not db.isValid():
+            raise Exception("Could not open database: " + db.lastError().text())
+        self.setTable('users')
+        if db.lastError().isValid():
+            raise Exception(db.lastError().text())
+        self.select()
+        
+        
+    def get_user(self, userid: str) -> QSqlRecord:
+        for i in range(0, self.rowCount()):
+            r = self.record(i)
+            if userid == r.value('userid'):
+                return r
+    
+    
+    def set_or_update_user(self, userid: str, homeserver: str, token: str) -> QSqlRecord:
+        rec = self.record()
+        row = -1
+        
+        for i in range(0, self.rowCount()):
+            r = self.record(i)
+            if userid == r.value('userid'):
+                row = i
+                rec = r
+                break
+        
+            
+        rec.setValue('userid', userid)
+        rec.setGenerated('userid', True)
+        rec.setValue('homeserver', homeserver)
+        rec.setGenerated('homeserver', True)
+        rec.setValue('token', token)
+        rec.setGenerated('token', True)
+        
+        if row == -1:
+            result = self.insertRecord(-1, rec)
+            if result is False:
+                print("insertRecord", self.lastError().text(), self.lastError().databaseText())
+        else:
+            result = self.setRecord(row, rec)
+            if result is False:
+                print("setRecord", self.lastError().text(), self.lastError().databaseText())
+        
+        self.submitAll()
+        return rec
+    
+    
+    def index_for_userid(self, userid: str) -> int:
+        for i in range(0, self.rowCount()):
+            r = self.record(i)
+            if userid == r.value('userid'):
+                return i
+
 
 class RoomListNameWorker(QThread):
     KeepWorking = True
@@ -101,6 +159,8 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         
         self.db = QSqlDatabase.addDatabase('QSQLITE')
         self.db.setDatabaseName('emojimanager.db')
+        
+        self.usermodel = UserModel(QSqlDatabase.cloneDatabase(self.db, 'users'), parent=self)
 
         self.proxy = QSortFilterProxyModel(self)
 
@@ -108,11 +168,15 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         def set_filter_text():
             self.proxy.setFilterRegExp(self.txtFilter.toPlainText())
 
-        self.txtUserID.setText("<Please Login>")
         self.txtFilter.textChanged.connect(set_filter_text)
-        self.cmdLogin.clicked.connect(self.show_login_window)
         self.cmdEmojis.clicked.connect(self.show_emoji_window)
         self.listRooms.doubleClicked.connect(self.open_roomedit)
+        
+        self.cbUser.setModel(self.usermodel)
+        self.cbUser.activated.connect(self.current_user_changed)
+        
+        self.actionAdd_new_account.triggered.connect(self.add_new_account)
+        
 
         self.load_if_available()
 
@@ -135,13 +199,41 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         editor = EmojiEditor(parent=self, matrixapi=matrix, db=QSqlDatabase.cloneDatabase(self.db, 'emojis'), room=room)
         editor.exec()
         
+    
+    @pyqtSlot()
+    def add_new_account(self):
+        global matrix
+        dlg = LoginForm(self)
+        dlg.updateDefaultsFromMatrix(matrix)
+        if dlg.exec_():
+            matrix = MatrixAPI(dlg.access_token, dlg.homeserver, dlg.user_id)
+            try:
+                self.matrix_test()
+            except Exception as ex:
+                QMessageBox.critical(self, "Login failed",
+                                     "Matrix login has failed:\n" + str(ex))
+
+            if dlg.chkSave.isChecked():
+                self.usermodel.set_or_update_user(dlg.user_id, dlg.homeserver, dlg.access_token)
+            else:
+                self.usermodel.set_or_update_user(dlg.user_id, dlg.homeserver, None)
+            self.cbUser.setCurrentIndex(self.usermodel.index_for_userid(dlg.user_id))
+        
+        
+    @pyqtSlot(int)
+    def current_user_changed(self, index):
+        global matrix
+        
+        r = self.usermodel.record(index)
+        
+        matrix = MatrixAPI(r.value('token'), r.value('homeserver'), r.value('userid'))
+        
+        QTimer.singleShot(100, lambda: self.matrix_test())
+    
 
     def load_if_available(self) -> None:
         try:
-            if matrix.load():
-                if matrix.user_id and matrix.access_token:
-                    self.txtUserID.setText(matrix.user_id)
-                    self.matrix_test()
+            pass # todo
 
         except Exception as ex:
             QMessageBox.critical(
@@ -155,12 +247,11 @@ class MainWindow(Ui_MainWindow, QMainWindow):
             ))
 
             m = matrix.get_user_profile(matrix.user_id)
-            self.txtGlobalName.setText(m.name)
 
             # Populate room list
             if (rooms := matrix.get_rooms()) is not None:
                 self.model = RoomTableModel(parent=self, db=QSqlDatabase.cloneDatabase(self.db, 'rooms'), rooms=rooms)
-
+                self.model.setFilter(f"userid == '{self.cbUser.currentData(Qt.DisplayRole)}'")
                 self.proxy.setSourceModel(self.model)
                 self.listRooms.setModel(self.proxy)
 
@@ -197,40 +288,27 @@ class MainWindow(Ui_MainWindow, QMainWindow):
                 roomrow = i
                 #print('foundRowNumber', rownumber)
                 break
+            
+        userid = self.cbUser.currentData(Qt.DisplayRole)
         
         r.setValue('room', roomid)
         r.setGenerated('room', True)
         r.setValue('name', name)
         r.setGenerated('name', True)
+        r.setValue('userid', userid)
+        r.setGenerated('userid', True)
 
         if roomrow < 0:
             result = self.model.insertRecord(-1, r)
             if result is False:
-                print("insertRecord", self.model.lastError().text(), self.model.lastError().databaseText())
+                print("updateRoomName insertRecord:", self.model.lastError().text(), self.model.lastError().databaseText())
         else:
             result = self.model.setRecord(roomrow, r)
             if result is False:
-                print("setRecord", self.model.lastError().text(), self.model.lastError().databaseText())
+                print("updateRoomName setRecord:", self.model.lastError().text(), self.model.lastError().databaseText())
         
         self.model.submitAll()
         self.model.select()
-
-    @pyqtSlot()
-    def show_login_window(self) -> None:
-        global matrix
-        dlg = LoginForm(self)
-        dlg.updateDefaultsFromMatrix(matrix)
-
-        if dlg.exec_():
-            matrix = MatrixAPI(dlg.access_token, dlg.homeserver, dlg.user_id)
-            if dlg.chkSave.isChecked():
-                matrix.save()
-            self.txtUserID.setText(dlg.user_id)
-            try:
-                self.matrix_test()
-            except Exception as ex:
-                QMessageBox.critical(self, "Login failed",
-                                     "Matrix login has failed:\n" + str(ex))
 
 
     @pyqtSlot()

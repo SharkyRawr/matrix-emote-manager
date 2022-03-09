@@ -13,8 +13,15 @@ def init_db():
     
     CREATE TABLE IF NOT EXISTS rooms (
       room TEXT PRIMARY KEY NOT NULL,
+      userid TEXT NOT NULL,
       name TEXT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS room_name_idx ON rooms (room, name);
+    
+    CREATE TABLE IF NOT EXISTS users (
+      userid TEXT PRIMARY KEY NOT NULL,
+      homeserver TEXT NOT NULL,
+      token TEXT
+    );
   """)
   c.close()
