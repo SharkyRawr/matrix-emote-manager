@@ -6,7 +6,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS emojis (
       blob BLOB,
       room TEXT,
-      shortcode TEXT PRIMARY KEY NOT NULL,
+      shortcode TEXT NOT NULL,
       mxc TEXT NOT NULL
     );  
     CREATE UNIQUE INDEX IF NOT EXISTS shortcode_room_idx ON emojis (shortcode, room);
