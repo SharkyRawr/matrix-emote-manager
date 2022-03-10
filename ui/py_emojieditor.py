@@ -188,7 +188,10 @@ class EmojiUploaderTask(QDialog):
 
         basename = os.path.basename(file)
         nakedfilename, _ = os.path.splitext(basename)
-        emojiname = ':' + nakedfilename + ':'
+        
+        # Apparently shortcodes should be without :: ?? or it breaks certain clients
+        #emojiname = ':' + nakedfilename + ':'
+        emojiname = nakedfilename
 
         if self.append and emojiname in self.emotes:
             return
@@ -307,8 +310,10 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.db = db
         self.m = EmojiTableModel(parent=self, db=self.db)
         if room:
-            self.m.setFilter(f"emojis.room = '{room}'")
-            self.m.select()
+            self.m.setFilter(f"emojis.room == '{room}'")
+        else:
+            self.m.setFilter(f"emojis.room is NULL")
+        self.m.select()
         t.setModel(self.m)
         d = EmojiTableDelegate(self)
         t.setItemDelegate(d)
