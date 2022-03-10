@@ -174,6 +174,7 @@ class MainWindow(Ui_MainWindow, QMainWindow):
         
         self.cbUser.setModel(self.usermodel)
         self.cbUser.activated.connect(self.current_user_changed)
+        self.cbUser.setCurrentIndex(-1)
         
         self.actionAdd_new_account.triggered.connect(self.add_new_account)
         
@@ -223,9 +224,7 @@ class MainWindow(Ui_MainWindow, QMainWindow):
     @pyqtSlot(int)
     def current_user_changed(self, index):
         global matrix
-        
         r = self.usermodel.record(index)
-        
         matrix = MatrixAPI(r.value('token'), r.value('homeserver'), r.value('userid'))
         
         QTimer.singleShot(100, lambda: self.matrix_test())
