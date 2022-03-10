@@ -196,10 +196,17 @@ class EmojiUploaderTask(QDialog):
         if self.append and emojiname in self.emotes:
             return
 
-        mxc = self.matrix.upload_media(file)
-        self.emotes['images'][emojiname] = {
-            'url': mxc
-        }
+        while True:
+            try:
+                mxc = self.matrix.upload_media(file)
+                self.emotes['images'][emojiname] = {
+                    'url': mxc
+                }
+                break
+            except Exception as ex:
+                r = QMessageBox.critical(self, "Error uploading emoji", str(ex), QMessageBox.Ignore | QMessageBox.Retry)
+                if r == QMessageBox.Ignore:
+                    break
 
     @pyqtSlot()
     def work_done(self):
@@ -312,7 +319,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         if room:
             self.m.setFilter(f"emojis.room == '{room}'")
         else:
-            self.m.setFilter(f"emojis.room is NULL")
+            self.m.setFilter("emojis.room is NULL")
         self.m.select()
         t.setModel(self.m)
         d = EmojiTableDelegate(self)
