@@ -257,7 +257,7 @@ class EmojiTableDelegate(QItemDelegate):
         
         painter.save()
         painter.translate(option.rect.topLeft())
-        painter.drawPixmap((option.rect.width() / 2) - (drawable.width() / 2), 0, drawable)
+        painter.drawPixmap(int((option.rect.width() / 2) - (drawable.width() / 2)), 0, drawable)
         painter.restore()
         
 

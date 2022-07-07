@@ -239,37 +239,40 @@ class MainWindow(Ui_MainWindow, QMainWindow):
                 self, "Error", "Could not restore settings from settings.json!\n" + str(type(ex)) + ": " + str(ex))
 
     def matrix_test(self) -> None:
-        if (p := matrix.get_presence()) is not None:
-            # WE ARE LOGGED IN
-            self.statusbar.showMessage("Status: {}, last active: {} seconds ago".format(
-                p['presence'], p['last_active_ago']
-            ))
+        try:
+            if (p := matrix.get_presence()) is not None:
+                # WE ARE LOGGED IN
+                self.statusbar.showMessage("Status: {}, last active: {} seconds ago".format(
+                    p['presence'], p['last_active_ago']
+                ))
 
-            m = matrix.get_user_profile(matrix.user_id)
+                m = matrix.get_user_profile(matrix.user_id)
 
-            # Populate room list
-            if (rooms := matrix.get_rooms()) is not None:
-                self.model = RoomTableModel(parent=self, db=QSqlDatabase.cloneDatabase(self.db, 'rooms'), rooms=rooms)
-                self.model.setFilter(f"userid == '{self.cbUser.currentData(Qt.DisplayRole)}'")
-                self.proxy.setSourceModel(self.model)
-                self.listRooms.setModel(self.proxy)
+                # Populate room list
+                if (rooms := matrix.get_rooms()) is not None:
+                    self.model = RoomTableModel(parent=self, db=QSqlDatabase.cloneDatabase(self.db, 'rooms'), rooms=rooms)
+                    self.model.setFilter(f"userid == '{self.cbUser.currentData(Qt.DisplayRole)}'")
+                    self.proxy.setSourceModel(self.model)
+                    self.listRooms.setModel(self.proxy)
 
-                # Start fetching room names
-                self._t = RoomListNameWorker(self, rooms=rooms)
-                self._t.roomNameFetched.connect(self.roomNameFetched)
-                self._t.start()
-                self.statusbar.showMessage("Fetching room/member names ...")
+                    # Start fetching room names
+                    self._t = RoomListNameWorker(self, rooms=rooms)
+                    self._t.roomNameFetched.connect(self.roomNameFetched)
+                    self._t.start()
+                    self.statusbar.showMessage("Fetching room/member names ...")
 
-                def finished():
-                    self.statusbar.showMessage("Status: {}, last active: {} seconds ago, {} rooms".format(
-                        p['presence'], p['last_active_ago'], len(rooms)
-                    ))
+                    def finished():
+                        self.statusbar.showMessage("Status: {}, last active: {} seconds ago, {} rooms".format(
+                            p['presence'], p['last_active_ago'], len(rooms)
+                        ))
 
-                self._t.finished.connect(finished)
+                    self._t.finished.connect(finished)
 
-        else:
-            QMessageBox.critical(self, "Login failed",
-                                 "Matrix login has failed, please login again...")
+            else:
+                QMessageBox.critical(self, "Login failed",
+                                    "Matrix login has failed, please login again...")
+        except Exception as ex:
+            QMessageBox.critical(self, "Login failed", str(ex))
 
     @pyqtSlot(str, str)
     def roomNameFetched(self, roomid, name):
