@@ -16,13 +16,14 @@ from PyQt5.QtWidgets import (QDialog, QFileDialog, QLabel,
                              QMessageBox, QPlainTextEdit, QProgressBar,
                              QVBoxLayout, QTableView, QItemDelegate, QLabel,
                              QHeaderView, QMenu, QAction)
-from PyQt5.QtSql import QSqlRelationalTableModel, QSqlDatabase, QSqlRelation
+from PyQt5.QtSql import QSqlRelationalTableModel, QSqlDatabase, QSqlRelation, QSqlTableModel
 
 from .emojieditor import Ui_EmojiEditor
 from .ImportExportHandlerAndProgressDialog import \
     Ui_ImportExportHandlerAndProgressDialog
 
-EMOJI_DIR = r'emojis'
+
+from .const import CACHE_DIR, EMOJI_DIR
 
 
 class EmojiDownloadThread(QThread):
@@ -223,16 +224,19 @@ class EmojiUploaderTask(QDialog):
         
 
 class EmojiTableModel(QSqlRelationalTableModel):
-    def __init__(self, parent, db, *args, **kwargs) -> None:
+    def __init__(self, parent, room: Optional[str], db, *args, **kwargs) -> None:
         super().__init__(parent, db, *args, **kwargs)
         if not db.open() or db.isOpenError() or not db.isValid():
             raise Exception("Could not open database: " + db.lastError().text())
+        
+        self.setEditStrategy(QSqlTableModel.OnRowChange)
         self.setTable('emojis')
         if db.lastError().isValid():
             raise Exception(db.lastError().text())
         
-        self.setJoinMode(QSqlRelationalTableModel.LeftJoin)
-        self.setRelation(1, QSqlRelation("rooms", "room", "name"))
+        if room:
+            self.setJoinMode(QSqlRelationalTableModel.LeftJoin)
+            self.setRelation(1, QSqlRelation("rooms", "room", "name"))
         self.select()
         
 
@@ -307,15 +311,16 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
         self.actionExport.triggered.connect(self.exportEmojis)
         self.cmdPushEmojis.clicked.connect(self.pushEmojis)
 
-        if not os.path.lexists(EMOJI_DIR) and not os.path.isdir(EMOJI_DIR):
-            os.mkdir(EMOJI_DIR)
+        for p in (CACHE_DIR, EMOJI_DIR):
+            if not os.path.lexists(p) and not os.path.isdir(p):
+                os.mkdir(p)
 
         self.matrix = matrixapi
         
         t: QTableView = self.tableView
         self.tableView.customContextMenuRequested.connect(self.emojiContextMenuRequested)
         self.db = db
-        self.m = EmojiTableModel(parent=self, db=self.db)
+        self.m = EmojiTableModel(parent=self, db=self.db, room=room or None)
         if room:
             self.m.setFilter(f"emojis.room == '{room}'")
         else:
@@ -379,6 +384,7 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
             print(ex)
             QMessageBox.critical(self, "Error", str(ex))
                 
+        self.refreshEmojis()
         QMessageBox.information(self, "Success", "Emojis succesfully saved to homeserver.")
         
     
@@ -390,8 +396,13 @@ class EmojiEditor(Ui_EmojiEditor, QDialog):
     @pyqtSlot()
     def emojiDelete(self):
         selectedIndexes = self.tableView.selectedIndexes()
-        for index in selectedIndexes:
-            self.m.removeRow(index.row())
+        rows = set(index.row() for index in selectedIndexes)
+        for row in rows:
+            if not self.m.removeRows(row, 1):
+                err = self.m.lastError()
+                print(f"Emoji Row {row} was NOT removed!", err.text(), err.driverText(), err.databaseText())
+        
+        self.m.submitAll()
         self.m.select()
 
 

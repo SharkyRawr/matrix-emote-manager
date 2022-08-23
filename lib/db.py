@@ -10,6 +10,7 @@ def init_db():
       mxc TEXT NOT NULL
     );  
     CREATE UNIQUE INDEX IF NOT EXISTS shortcode_room_idx ON emojis (shortcode, room);
+    CREATE UNIQUE INDEX IF NOT EXISTS shortcode_idx ON emojis (shortcode);
     
     CREATE TABLE IF NOT EXISTS rooms (
       room TEXT PRIMARY KEY NOT NULL,

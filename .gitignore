@@ -6,7 +6,7 @@
 /.vscode
 /*.json
 /*.db
-/emojis
+/cache
 /.qt_for_python
 *~
 *.autosave
